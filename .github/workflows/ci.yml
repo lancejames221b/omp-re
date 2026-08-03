@@ -29,8 +29,9 @@ jobs:
       # and must pass in full; 3 suites (r2-integration, tools-registry,
       # tools-mutate-registry) require both a real radare2 and a WannaCry
       # fixture that is deliberately not distributed with this repo, so they
-      # `describe.skipIf(...)` themselves out — 0 tests reported for those
-      # files, never a failure, exit code 0. That is the correct, permanent
-      # shape of this job. See docs/testing.md. Do not "fix" the skips by
-      # installing radare2 or fetching a malware sample into CI.
+      # `describe.skipIf(...)` themselves out — their tests report as skipped
+      # inside the total (33 pass, 45 skip, 78 total), never a failure, exit
+      # code 0. That is the correct, permanent shape of this job. See
+      # docs/testing.md. Do not "fix" the skips by installing radare2 or
+      # fetching a malware sample into CI.
       - run: bun test

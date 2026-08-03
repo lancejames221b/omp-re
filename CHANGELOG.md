@@ -4,6 +4,47 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.1.1] - 2026-08-03
+
+### Fixed
+
+- `resolveEA` (the address normalizer `rename_function` and `set_prototype`
+  use to build their `/re undo` message) read a JSON read-back's `offset`
+  field, but r2 6.x renamed that field to `addr` on `afij` — confirmed
+  directly (`afij @ entry0` returns `{"addr":...}`, no `offset` key at all).
+  `resolveEA` therefore always fell back to the caller's raw address
+  argument, so `/re undo` after a `rename_function` showed the literal
+  string the model passed (e.g. `omp-re: undid rename_function @ entry0
+  (restored ...)`) instead of a normalized hex address. `extensions/re/r2.ts`
+  already exports `addrOf`/`eaFromOffset` handling exactly this `addr`/
+  `offset` split for every read tool; `resolveEA` now uses them too.
+  Verified against real radare2 6.1.8: `/re undo` now reports
+  `omp-re: undid rename_function @ 0x...`. See
+  [`test/QA-FINDINGS.md`](test/QA-FINDINGS.md) for the discovery context.
+- `test/tui-qa.sh`'s `clear_editor` backspace budget (20s, 40 keys/batch)
+  was sized for a short single-line prefill and could leave a fragment of a
+  real ~250-byte `/re cite` evidence summary in the editor, which the next
+  `slash` call would append to and submit as prose instead of a command.
+  Widened to 45s/80 keys per batch (comfortable margin up to the 512-byte
+  evidence-summary cap) — QA-harness-only, no plugin behavior change.
+- `test/tui-qa.sh`'s readiness handshake (`/re help` retried 8× at 15s) was
+  too tight on a host whose startup connects a large MCP server catalog;
+  widened to 16× at 20s. QA-harness-only.
+
+### Docs
+
+- `docs/testing.md`, `.github/workflows/ci.yml`, and `CONTRIBUTING.md`
+  corrected to the actual measured `bun test` shape: **72 pass / 0 fail / 0
+  skip** locally with radare2 + the real fixture (not 73), **33 pass / 45
+  skip / 78 total** in CI (the three fixture-gated files' tests report as
+  skipped inside the total, not as zero tests as previously stated).
+- `README.md` rewritten with real screenshots (`docs/img/`, regenerated via
+  the new `tools/shotgen/`) replacing the two ASCII "screenshot" fences,
+  one of which contained a fabricated `... 201 more rows ...` line that
+  matched no real pane capture.
+- New `test/QA-FINDINGS.md` §4: `decompileAt` observed falling back to
+  `pdc` even with r2ghidra installed, reproduced but not root-caused.
+
 ## [0.1.0] - 2026-08-03
 
 Initial public release.

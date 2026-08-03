@@ -210,15 +210,19 @@ clear_editor() {
 	# the current line, and a prefill built from real `\n` characters — as
 	# `/re cite`'s is — leaves the cursor on an already-empty trailing line).
 	# Fall back to plain backspacing with a time-bounded budget rather than a
-	# fixed keypress count: an evidence summary can run past 500 bytes
-	# (EVIDENCE_SUMMARY_MAX_BYTES), well beyond what a short fixed count
-	# would cover, and a tight burst of BSpace keys can lose some to the
-	# TUI's own render/input loop, so retry in batches against a wall-clock
-	# deadline instead of trusting one pass of N keypresses to land.
-	local deadline=$((SECONDS + 20))
+	# fixed keypress count: a real evidence summary can run up to
+	# EVIDENCE_SUMMARY_MAX_BYTES (512 bytes) plus the "Re: evidence ..."
+	# header, and a tight burst of BSpace keys can lose some to the TUI's own
+	# render/input loop, so retry in batches against a wall-clock deadline
+	# rather than trusting one pass of N keypresses to land. Measured against
+	# a real WannaCry hash_binary evidence entry (~250 bytes), the previous
+	# 20s/40-per-batch budget cleared only ~85% of the content before timing
+	# out, leaving a leftover fragment that the next slash command appended
+	# to; 45s/80-per-batch leaves comfortable margin up to the 512-byte cap.
+	local deadline=$((SECONDS + 45))
 	local j
 	while ((SECONDS < deadline)); do
-		for ((j = 0; j < 40; j++)); do
+		for ((j = 0; j < 80; j++)); do
 			keys BSpace
 		done
 		sleep 0.5
@@ -266,6 +270,21 @@ wait_for_count() {
 		sleep 1
 	done
 	return 1
+}
+
+# Guards every `lit <filter text>` call that assumes a panel/code-view is
+# already on screen. Under system load, the extension can open a panel a
+# moment before the terminal actually renders it; typing immediately after
+# the triggering command races that render and the keystrokes fall through
+# to the (still-focused) chat editor instead of the panel's filter box,
+# silently submitting them as a prose message to the model and derailing an
+# entire model turn (observed against the real fixture: a stray "Get"/"a"
+# landed as chat input and sent the model off on an unrelated tool-call
+# tangent, cascading failures through the rest of that run). No pass/fail
+# bookkeeping here — this only buys the render extra time before the type-
+# ahead; a genuine failure still surfaces at the real assertion right after.
+ensure_panel() {
+	wait_for "$1" "${2:-10}" || true
 }
 
 diagnose() {
@@ -436,12 +455,16 @@ tmux send-keys -t "$SESSION" \
 	"omp --session-dir '$TMP/session' --approval-mode yolo" Enter
 
 # --- readiness handshake ----------------------------------------------------
-# Startup takes ~40s on a machine with MCP servers configured: they connect
-# during startup and swallow keystrokes sent earlier, and the status band
-# renders well before they finish. So the band alone is NOT readiness. Poll for
-# the band, then retry the /re help round-trip until it answers. That round-trip
-# is the real handshake: it proves the TUI accepts input, the extension is
-# loaded, and its command is registered. It doubles as assertion A6.
+# Startup takes ~40s on a machine with a handful of MCP servers configured,
+# but on a machine with a large MCP tool catalog the startup dump can keep
+# printing/scrolling tool listings for 90-150s+, continuously swallowing
+# keystrokes sent during that window (observed directly: a "/re help" sent
+# at 75s post-launch still produced zero output, while a fresh send after
+# the dump settled answered within 5s). The status band renders well before
+# they finish, so the band alone is NOT readiness. Poll for the band, then
+# retry the /re help round-trip until it answers. That round-trip is the
+# real handshake: it proves the TUI accepts input, the extension is loaded,
+# and its command is registered. It doubles as assertion A6.
 
 if ! wait_for '[0-9]+ fn · [0-9]+ findings · [0-9]+ evidence' 120; then
 	echo "FAIL: readiness handshake (status band never rendered)"
@@ -450,7 +473,7 @@ if ! wait_for '[0-9]+ fn · [0-9]+ findings · [0-9]+ evidence' 120; then
 fi
 
 READY=0
-for attempt in 1 2 3 4 5 6 7 8; do
+for attempt in $(seq 1 16); do
 	# MCP startup swallows keystrokes; a partially swallowed attempt can leave
 	# a fragment (e.g. "elp") in the editor, which the next iteration would
 	# append to and submit as prose. Settle and explicitly clear first so
@@ -460,13 +483,13 @@ for attempt in 1 2 3 4 5 6 7 8; do
 	keys C-u
 	sleep 1
 	slash "/re help"
-	if wait_for 'disable RE tools' 15; then
+	if wait_for 'disable RE tools' 20; then
 		READY=1
 		break
 	fi
 done
 if [ "$READY" -eq 0 ]; then
-	echo "FAIL: readiness handshake (/re help never answered after 8 attempts)"
+	echo "FAIL: readiness handshake (/re help never answered after 16 attempts)"
 	diagnose
 	exit 1
 fi
@@ -642,6 +665,7 @@ expect 'C1 functions panel title'        'omp-re: functions'
 expect 'C2 functions panel hint'         'enter open · type to filter · esc close'
 expect 'C3 functions filter placeholder' '\(type to filter\)'
 
+ensure_panel 'omp-re: functions'
 lit "fcn"
 sleep 3
 C4="$(pane)"
@@ -687,6 +711,7 @@ expect 'C8 alt+g reopens the functions panel' 'omp-re: functions'
 # Filter to a function that is actually CALLED before opening it: entry0 (the
 # first row) has zero xrefs, which would make Phase E's `x` assertion depend on
 # an empty result that is invisible behind the open code view.
+ensure_panel 'omp-re: functions'
 lit "main"
 sleep 3
 D_FILTER_PANE="$(pane)"
@@ -757,6 +782,7 @@ if printf '%s' "$D_FILTER_PANE" | grep -q '/main' \
 	# performs the "real" toggle into decompile that stays unreset through E2,
 	# so E7 below can only see `disasm` from a genuinely new nested view, not
 	# a leaked outer state — placing D8 after E1 would make E7 vacuous instead.
+	ensure_panel 'd decomp · x xrefs · a ask · esc back'
 	lit "d"
 	sleep 2
 	lit "d"
@@ -766,10 +792,12 @@ if printf '%s' "$D_FILTER_PANE" | grep -q '/main' \
 	# E1/E2 are environment-dependent: whether r2 has a decompiler plugin, and
 	# whether the chosen function has xrefs. Both outcomes are correct behavior.
 
+	ensure_panel 'd decomp · x xrefs · a ask · esc back'
 	lit "d"
 	expect_any 'E1 d toggles decompile or reports pdc unavailable' \
 		'· decompile$' 'omp-re: no decompiler output \(pdc unavailable\)'
 
+	ensure_panel 'd decomp · x xrefs · a ask · esc back'
 	lit "x"
 	expect_any 'E2 x opens xrefs or reports none' \
 		'omp-re: xrefs to 0x[0-9a-f]+' 'omp-re: no xrefs to 0x[0-9a-f]+'
@@ -789,6 +817,7 @@ if printf '%s' "$D_FILTER_PANE" | grep -q '/main' \
 		skip 'E7 enter on an xref opens a nested code view' 'the filtered function has no xrefs in this fixture'
 	fi
 
+	ensure_panel 'd decomp · x xrefs · a ask · esc back'
 	lit "a"
 	expect_gone 'E3 a closes the code view' 'd decomp · x xrefs · a ask · esc back' 10
 else
@@ -874,6 +903,7 @@ expect 'F4 alt+s reopens the strings panel' 'omp-re: strings'
 # always echoes the typed text back as "/dll".
 expect 'F7 strings filter placeholder' '\(type to filter\)'
 
+ensure_panel 'omp-re: strings'
 lit "dll"
 sleep 3
 F8_PANE="$(pane)"
@@ -929,6 +959,7 @@ fi
 # the filter line itself always echoes the typed text back as "/Get".
 expect 'F11 imports filter placeholder' '\(type to filter\)'
 
+ensure_panel 'omp-re: imports'
 lit "Get"
 sleep 3
 F12_PANE="$(pane)"
@@ -1006,6 +1037,7 @@ if model_step 'G1 model calls hash_binary and reports the real digest' \
 	if [ -n "$EV_ID" ]; then
 		# Filter to hash_binary first: the model's own tool calls also write
 		# evidence, so row 1 is whatever ran last, not necessarily this entry.
+		ensure_panel 'omp-re: evidence'
 		lit "hash_binary"
 		sleep 2
 		keys Enter

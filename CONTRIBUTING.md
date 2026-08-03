@@ -13,9 +13,9 @@ without reviewing them first.
 
 ```bash
 bun run check      # tsc --noEmit — must exit 0
-bun test           # unit tests; 5 files run unconditionally, 3 skip without
-                    # a real radare2 + the (undistributed) WannaCry fixture —
-                    # see docs/testing.md
+bun test           # unit tests; all 8 files run, but 3 report their tests
+                    # as skipped without a real radare2 + the (undistributed)
+                    # WannaCry fixture — see docs/testing.md
 bash test/tui.sh   # fast tmux smoke test, ~30s
 bun run qa:tui     # full tmux QA pass, 99 assertions
 ```

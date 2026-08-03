@@ -1,3 +1,5 @@
 node_modules/
 *.tsbuildinfo
 .DS_Store
+tools/shotgen/out/
+tools/shotgen/node_modules/

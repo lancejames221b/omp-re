@@ -15,16 +15,17 @@ Eight test files. Five run unconditionally; three require both a real
 `radare2` on PATH and a test binary, and **skip entirely** (not fail) when
 either is missing:
 
-| File | Needs r2 + fixture? |
-| --- | --- |
-| `r2-pure.test.ts` | No |
-| `format.test.ts` | No |
-| `evidence.test.ts` | No |
-| `audit.test.ts` | No |
-| `report.test.ts` | No |
-| `r2-integration.test.ts` | Yes |
-| `tools-registry.test.ts` | Yes |
-| `tools-mutate-registry.test.ts` | Yes |
+| File | Needs r2 + fixture? | Tests (local, r2 + fixture) |
+| --- | --- | --- |
+| `r2-pure.test.ts` | No | 15 |
+| `format.test.ts` | No | 8 |
+| `evidence.test.ts` | No | 3 |
+| `audit.test.ts` | No | 3 |
+| `report.test.ts` | No | 3 |
+| `r2-integration.test.ts` | Yes | 5 |
+| `tools-registry.test.ts` | Yes | 23 |
+| `tools-mutate-registry.test.ts` | Yes | 12 |
+| **Total** | | **72** |
 
 **The default fixture is a real WannaCry sample** at
 `/tmp/rzx-dogfood/wannacry.bin`. It is **deliberately not distributed** with
@@ -35,10 +36,11 @@ like `var_14h` in `main`) assume the WannaCry fixture's actual disassembly
 and may not hold against an arbitrary substitute, so treat overriding it as
 "at your own risk" for exact-match assertions, not a general-purpose swap.
 
-Expected shape with the real fixture + r2 present: 73 pass, 0 fail. Without
-either: the three fixture-gated files report 0 tests each (skipped, not
-failed) and the rest still pass in full — this is CI's actual, permanent
-shape (see below), not a degraded state to "fix".
+Expected shape with the real fixture + r2 present: **72 pass, 0 fail, 0
+skip**. Without either: the three fixture-gated files' tests report as
+**skipped** (not failed) — **33 pass, 45 skip, 78 total** — and the rest
+still pass in full; this is CI's actual, permanent shape (see below), not a
+degraded state to "fix".
 
 ## Fast smoke tier — `bash test/tui.sh`
 
@@ -58,7 +60,13 @@ bun run qa:tui
 A long, comprehensive tmux-driven QA pass against the live TUI — 99
 assertions covering every `/re` subcommand, both shortcuts, the evidence
 panel, undo, and the audit log. Requires tmux, a real radare2, and the
-fixture; also not run in CI.
+fixture; also not run in CI. Target shape on an otherwise-idle host: **PASS
+99 / FAIL 0 / SKIP 0**. This tier drives a real interactive TUI over tmux
+with wall-clock timing assumptions, so a host under heavy, unrelated
+resource contention (high load average, active swap, competing processes)
+can produce cascading, environment-induced failures unrelated to the
+plugin's own correctness — see `test/QA-FINDINGS.md` for a worked example
+and the harness robustness fixes it prompted.
 
 The suite pins its own assertion count as a drift guard (a literal `-eq 99`
 near the end of the script): if you add or remove an assertion, update that
@@ -75,10 +83,12 @@ Two jobs, both fixture-free by design:
   --noEmit`). Needs nothing beyond Bun.
 - **`test`** — `bun install --ignore-scripts && bun test`. Deliberately does
   **not** install radare2 or supply a fixture. Expected result: the 5
-  fixture-free files pass in full, the 3 fixture-gated files skip (0 tests,
-  not a failure), overall exit code 0. This is the permanent, correct CI
-  shape — a future PR "fixing" the skips by installing radare2 or fetching a
-  malware sample into CI would be the actual regression.
+  fixture-free files' tests pass in full, and the 3 fixture-gated files'
+  tests report as **skipped** inside the total (not zero tests, not a
+  failure) — 33 pass, 45 skip, 78 total, overall exit code 0. This is the
+  permanent, correct CI shape — a future PR "fixing" the skips by installing
+  radare2 or fetching a malware sample into CI would be the actual
+  regression.
 
 Both tmux tiers (`test/tui.sh`, `test/tui-qa.sh`) are **local/self-hosted
 only**: both hard-exit 0 when the fixture is unreadable, which would make

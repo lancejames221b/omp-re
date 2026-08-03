@@ -11,6 +11,96 @@ Fixed during this pass, for reference:
   in the suite uses `omp-re: ...`. Both are now `omp-re:`
   (`extensions/re/index.ts`, the `sub === "off"` and `sub === "on"` branches).
 
+
+### 2026-08-03 release-polish pass (real WannaCry fixture, first time)
+
+`test/tui-qa.sh` had only ever been run with `OMPRE_TEST_BINARY=/bin/ls`
+before this pass; running it against the real default fixture
+(`/tmp/rzx-dogfood/wannacry.bin`) surfaced one genuine product bug and two
+harness robustness gaps that a tiny ELF never exercised:
+
+- **`resolveEA` (`extensions/re/tools-mutate.ts`) read the wrong JSON field.**
+  It pulled a hex EA out of a read-back's `offset` field, but r2 6.x renamed
+  that field to `addr` on `afij` (the read-back command `rename_function`
+  and `set_prototype` both use). Confirmed directly: `r2 -q -c 'afij @
+  entry0'` on the WannaCry fixture returns `{"addr":4233750,...}` — no
+  `offset` key at all. `resolveEA` therefore *always* fell back to the
+  caller's raw address string, so `/re undo`'s message showed the literal
+  argument the model passed (e.g. `omp-re: undid rename_function @ entry0
+  (restored ...)`) instead of a normalized hex address — this is the `H2`
+  defect from the invalidated `/bin/ls` QA run. `addrOf`/`eaFromOffset`
+  (`extensions/re/r2.ts`) already exist and handle exactly this `addr`/
+  `offset` split for every read-tool callsite; `resolveEA` just never used
+  them. Fixed by routing it through the same two helpers. Verified: the
+  `test/tools-mutate-registry.test.ts` `set_prototype` undo test previously
+  asserted the buggy literal (`@ entry0`) and now asserts the real hex form;
+  `H2` passes live against the real fixture post-fix
+  (`omp-re: undid rename_function @ 0x...`).
+- **`clear_editor`'s backspace budget (`test/tui-qa.sh`) was sized for a
+  short single-line prefill, not a real evidence summary.** A real
+  `hash_binary` evidence entry against WannaCry is ~250 bytes; the prior
+  20s/40-keys-per-batch budget cleared only ~85% of it before its deadline,
+  leaving a `Re: evidence <id> (hash_binary @ 0` fragment that the next
+  `slash` call appended text to, submitting the glued string as a chat
+  message instead of a command (`G6`'s failure mode in the first full run).
+  Widened to 45s/80 keys per batch — comfortable margin up to
+  `EVIDENCE_SUMMARY_MAX_BYTES` (512).
+- **Typed filter text could race a panel's render and land in the chat
+  editor instead.** Reproduced live: after the E-phase code view/xrefs
+  nesting closes back out, pressing `a` sometimes landed while the
+  functions panel underneath had not yet fully redrawn, so the keypress
+  (and later, `dll`/`Get` in the F-phase strings/imports filters) fell
+  through to the still-focused chat editor and got submitted as prose,
+  sending the model off on an unrelated tool-call tangent for the rest of
+  that run. Careful, deliberately slow manual replays of the exact same key
+  sequence (2-3s between every keystroke) never reproduced this — it is a
+  render-timing race, not a logic defect in `ui.ts`'s overlay stack. Added
+  `ensure_panel`, a bare `wait_for` with no pass/fail bookkeeping, before
+  every `lit <filter text>` call that assumes a panel or code view is
+  already on screen (functions, strings, imports, evidence panels; the code
+  view's `d`/`x`/`a` keys). The readiness handshake's own `/re help` retry
+  loop (8 attempts x 15s) was also too tight for a machine with a large MCP
+  tool catalog — a startup dump was observed still swallowing keystrokes 75s
+  after launch — widened to 16 x 20s.
+- **Separately, and not a `test/tui-qa.sh` or `extensions/re/` defect:** on
+  this session's specific shared host, repeated full-tier runs kept failing
+  at different, non-reproducible points (a startup handshake timeout, a
+  cascading stray-keystroke derailment even with the guards above, and
+  literal `Error: omp-re: radare2 process exited` mid-run) that correlate
+  with measured, severe, third-party resource contention on that host:
+  `uptime` load average 6-9 sustained across multiple checks, `free -h`
+  showing ~80GiB of swap in active use with as little as 2GiB RAM free, 21-23
+  concurrent logged-in users, and an unrelated process (`./complicated 4
+  init`, running since Aug 1) pinned at 99.8% CPU throughout. `r2`/r2ghidra's
+  Ghidra decompile bridge is memory- and CPU-heavy; a host thrashing this
+  hard can plausibly starve or kill it independent of any omp-re code path.
+  One full run did complete end to end on this same host earlier in the
+  session (before the harness fixes above, before the host's swap usage
+  climbed further): **PASS 94 / FAIL 5 / SKIP 0** — of the 5 failures, `G6`
+  and the `E3`/`E4`/`E5`/`L4` cascade are the exact classes the fixes above
+  target, and `D5`/`D7` already passed clean in that same run (the `/bin/ls`
+  "no matching function" artifact this pass exists to resolve). No
+  subsequent attempt on this host reached a clean run to independently
+  confirm 99/0/0; re-run this tier on an otherwise-idle host to get a
+  trustworthy number rather than retrying again here.
+- **`test/tui.sh` (smoke tier) on this same host:** two assertions
+  consistently failed with `OMPRE_TEST_BINARY=/bin/ls` (needed to avoid the
+  `--binary`-races-MCP-startup crash above) — "status band line 1 missing
+  ... PE32 ..." is expected and fixture-specific (the assertion hardcodes
+  `PE32`/`x86/32`; `/bin/ls` is ELF64/x86-64), not a defect. "/re off did
+  not notify RE tools disabled" reproduced 3/3 times with `/bin/ls` even
+  after adding an explicit wait for the editor's status border before
+  sending the command (a real, if unrelated, robustness fix now in
+  `test/tui.sh`); the immediately-following `/re on` on the identical
+  session always succeeded. Not isolated further — plausibly the same
+  local-skill/autocomplete collision on `/re` documented for `G6` above,
+  or another instance of the render-timing class this pass fixed
+  elsewhere, but neither was confirmed. The default WannaCry fixture could
+  not be used to cross-check because of the `--binary` crash. Treat as
+  unverified on this host rather than a confirmed regression: nothing in
+  this pass's diff touches `/re off`'s handler (`extensions/re/index.ts`)
+  or its test.
+
 ---
 
 ## 1. A notify raised from an open panel is invisible to the user
@@ -187,3 +277,64 @@ comparing `capture-pane -p` against `capture-pane -p -J` (which rejoins wrapped
 lines) would reveal wrapping, and asserting no rendered line ends exactly at
 the last column would catch clipping. Do not "fix" L1 by loosening its expected
 count to accommodate a wrap; a wrap there is a real defect.
+
+---
+
+## 4. `decompileAt` falls back to `pdc` inside the real omp extension even
+## though r2ghidra is installed and its identical protocol sequence works
+## standalone
+
+**Discovered during:** the 2026-08-03 release-polish pass, capturing the
+`decompile` scene for `tools/shotgen`.
+**Origin:** `extensions/re/decompile.ts` (`resolveKind`/`decompileAt`), or
+possibly an environment difference outside this repo — not conclusively
+isolated to one side.
+
+### What happens
+
+Opening `main` in `/bin/ls` and pressing `d` for decompile mode renders r2's
+native `pdc` pseudo-C (`int main (int argc, char **argv) { loc_0x0000475f:
+... }`), not r2ghidra's real output, even though:
+
+- `r2 -q -c 'pdg @ main' /bin/ls` from a plain shell produces genuine Ghidra
+  decompilation (`uint main(int argc,char **argv) { char **ppcVar1; ... }`).
+- A standalone script replicating `R2Session`'s exact protocol byte-for-byte
+  (spawn `r2 -q0 <bin>`, consume the startup banner frame, run `aaa`, probe
+  `pdg?` for the "not available" signature, run `pdg @ main`) also succeeds:
+  the probe correctly reports r2ghidra present, and `pdg @ main` returns
+  35KB of real decompiled output in ~8s.
+- The fallback reproduces in a **fresh** interactive session with **zero**
+  prior model tool calls (opened the binary, jumped straight to `main`,
+  pressed `d` — no `hero`-style triage prompt in between), ruling out
+  interference from a concurrent/earlier r2 command on the same session.
+
+### What was ruled out
+
+- **Frame-count desync in `cmd()`'s 8-frame loop**: measured directly —
+  `pdg?`'s ~958-byte help text arrives as exactly one r2pipe frame, not one
+  frame per line, so it can never approach the ceiling.
+- **Session already closed** (an earlier timeout having called
+  `R2Session.close()`, killing the process): ruled out because `pdfj`
+  (disassembly) succeeds on the same session immediately before and after
+  the failed decompile — a closed session's `cmd()` throws
+  `"radare2 process exited"` unconditionally, which would break disasm too.
+- **Model tool-call interference**: ruled out by the zero-prior-turn
+  reproduction above.
+
+### Why it was not fixed here
+
+The standalone replica proves `resolveKind`'s probe *logic* is sound against
+the exact same r2 binary and command sequence; the real extension still
+degrades. That gap points at something in the omp/bun execution context
+(PATH resolution for the spawned `r2`, an environment variable r2ghidra
+reads, a working-directory-dependent plugin lookup) rather than the
+TypeScript itself, but this pass did not isolate which — confirming it needs
+comparing `process.env.PATH` and `r2 -v`/loaded-plugin output *from inside*
+a running omp session against a plain shell's, which is instrumentation this
+pass didn't have time to add. Recorded here rather than guessed at further.
+
+**Consequence for the shipped screenshots:** `docs/img/decompile.png` shows
+the honest `pdc` fallback rather than r2ghidra output. That is still a real,
+accurate capture of the extension's actual behavior (including the
+degradation labeling working as designed) — not a defect in the screenshot
+pipeline — but it is the less impressive of the two possible outcomes.

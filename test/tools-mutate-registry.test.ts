@@ -204,7 +204,7 @@ describe.skipIf(!r2Available || !binaryAvailable)("mutate tool registry + undo c
 			expect(after).toContain('"signature":"int probe (int a);"');
 
 			const message = await undoLastAnnotation(pi, ctx);
-			expect(message).toStartWith("omp-re: undid set_prototype @ entry0 (restored ");
+			expect(message).toStartWith("omp-re: undid set_prototype @ 0x");
 
 			const reverted = (await session.cmd("afij @ entry0")).trim();
 			expect(reverted).toBe(before);

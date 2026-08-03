@@ -1,6 +1,6 @@
 {
   "name": "omp-re",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Reverse-engineering suite for omp: radare2 tools, evidence store, signed audit log, RE status band, and report generator.",
   "license": "MIT",
   "author": "Lance James <lancejames@unit221b.com>",

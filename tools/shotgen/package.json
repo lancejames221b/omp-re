@@ -1,0 +1,7 @@
+{
+  "name": "omp-re-shotgen",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Renders real omp-re TUI captures to PNG for docs. Not part of the plugin.",
+  "dependencies": { "ansi-to-html": "0.7.2" }
+}

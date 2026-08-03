@@ -9,7 +9,7 @@
  */
 import type { AgentToolResult, ExtensionAPI, ExtensionContext } from "@oh-my-pi/pi-coding-agent";
 import { ensureR2, getState } from "./state.ts";
-import { normalizeAddr, validateAddr, validateIdent, validateText, validateTypeLike } from "./r2.ts";
+import { addrOf, eaFromOffset, normalizeAddr, validateAddr, validateIdent, validateText, validateTypeLike } from "./r2.ts";
 
 /** Parse a JSON array read-back (afij/afvlj shape) defensively; returns [] on any parse failure rather than throwing, so callers can produce a clear verification error. */
 function parseJsonArray(raw: string): Record<string, unknown>[] {
@@ -21,13 +21,11 @@ function parseJsonArray(raw: string): Record<string, unknown>[] {
 	}
 }
 
-/** Mirrors Go's resolveEA: pull a hex EA out of a JSON read-back's `offset` field, falling back to the raw requested addr when the read-back isn't JSON or has none. */
+/** Pull a hex EA out of a JSON read-back's addr/offset field (r2 6.x renamed afij's `offset` to `addr`; see addrOf), falling back to the raw requested addr when the read-back isn't JSON or has neither field. */
 function resolveEA(readBack: string, fallbackAddr: string): string {
 	const arr = parseJsonArray(readBack);
-	const offset = arr[0]?.offset;
-	if (typeof offset === "number") return `0x${offset.toString(16)}`;
-	if (typeof offset === "string") return offset;
-	return fallbackAddr;
+	const addr = addrOf(arr[0] ?? {});
+	return addr === undefined ? fallbackAddr : eaFromOffset(addr);
 }
 
 /** r2's `afij` always re-punctuates a signature it stores (adds a space before `(`, appends a trailing `;`)

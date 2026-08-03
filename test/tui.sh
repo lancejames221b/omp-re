@@ -170,7 +170,12 @@ else
 fi
 
 # Reset to a clean editor state (single Escape, polled) before the toggle
-# assertions below — never send a second blind Escape.
+# assertions below — never send a second blind Escape. The overlay closing
+# in the pane is not the same instant as the editor's own status border
+# redrawing; sending "/re off" immediately after the overlay-gone poll can
+# otherwise race that redraw and lose the keystrokes (observed directly on
+# a fast fixture, where analysis finishes quickly enough to expose the
+# gap) — wait for the editor border explicitly before typing.
 tmux send-keys -t "$SESSION" Escape
 for _ in $(seq 1 10); do
 	if ! pane | grep -q 'omp-re: functions'; then
@@ -178,6 +183,7 @@ for _ in $(seq 1 10); do
 	fi
 	sleep 1
 done
+wait_for '^╭── ' 10 || true
 
 # --- assertion 4: /re off disables the RE tools; /re on re-enables them ---
 
