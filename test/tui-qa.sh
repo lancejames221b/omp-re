@@ -185,26 +185,49 @@ editor_visible() {
 # Empty the editor and verify it. A leftover prefill is not cosmetic: the next
 # slash command gets APPENDED to it and the whole thing submits as prose,
 # which starts an unintended agent run and derails every later phase.
+#
+# "Cleared" means the editor box has no content row at all — checking for one
+# specific prefill's text (as an earlier version of this helper did) silently
+# passes for any OTHER prefill, since a check for text that was never present
+# is trivially true on the very first no-op attempt. Content rows are the
+# `editor()` lines that start with the box's left border glyph, `│`; the top
+# (`╭──`) and bottom (`╰─`) border lines never do.
+editor_has_content() {
+	editor | grep -q '^│'
+}
+
 clear_editor() {
 	editor_visible || return 1
 	local i
 	for ((i = 0; i < 3; i++)); do
 		keys C-u
 		sleep 1
-		if ! editor | grep -q 'Use the RE tools'; then
+		if ! editor_has_content; then
 			return 0
 		fi
 	done
+	# C-u alone does not clear a genuinely multi-line prefill (it only acts on
+	# the current line, and a prefill built from real `\n` characters — as
+	# `/re cite`'s is — leaves the cursor on an already-empty trailing line).
+	# Fall back to plain backspacing with a time-bounded budget rather than a
+	# fixed keypress count: an evidence summary can run past 500 bytes
+	# (EVIDENCE_SUMMARY_MAX_BYTES), well beyond what a short fixed count
+	# would cover, and a tight burst of BSpace keys can lose some to the
+	# TUI's own render/input loop, so retry in batches against a wall-clock
+	# deadline instead of trusting one pass of N keypresses to land.
+	local deadline=$((SECONDS + 20))
 	local j
-	for ((j = 0; j < 250; j++)); do
-		keys BSpace
-		if ((j % 25 == 24)) && ! editor | grep -q 'Use the RE tools'; then
-			break
+	while ((SECONDS < deadline)); do
+		for ((j = 0; j < 40; j++)); do
+			keys BSpace
+		done
+		sleep 0.5
+		if ! editor_has_content; then
+			return 0
 		fi
 	done
-	sleep 2
 	editor_visible || return 1
-	! editor | grep -q 'Use the RE tools'
+	! editor_has_content
 }
 
 # A single Enter submits a slash command; a second Enter would land INSIDE a
@@ -995,8 +1018,12 @@ if model_step 'G1 model calls hash_binary and reports the real digest' \
 		expect 'G5 /re evidence <8-char prefix> resolves' '\[hash_binary:' 15
 
 		slash "/re cite $EV_ID"
-		expect 'G7 /re cite prefills the editor' "Re: evidence $EV_ID" 15
-		clear_editor || true
+		if wait_for "Re: evidence $EV_ID" 15 && clear_editor; then
+			pass 'G7 /re cite prefills the editor'
+		else
+			fail 'G7 /re cite prefills the editor'
+			diagnose
+		fi
 	else
 		fail 'G4 enter shows the evidence detail (could not capture an evidence id)'
 		close_overlay 'omp-re: evidence'
