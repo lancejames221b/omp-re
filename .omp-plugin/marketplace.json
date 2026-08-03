@@ -1,0 +1,18 @@
+{
+  "name": "unit221b",
+  "owner": { "name": "Unit 221B" },
+  "metadata": { "description": "Unit 221B tooling for omp" },
+  "plugins": [
+    {
+      "name": "omp-re",
+      "description": "Reverse-engineering suite: radare2 tools, evidence store, audit log, RE status band, report generator",
+      "version": "0.1.0",
+      "homepage": "https://github.com/lancejames221b/omp-re",
+      "repository": "https://github.com/lancejames221b/omp-re",
+      "license": "MIT",
+      "keywords": ["radare2", "reverse-engineering", "malware-analysis", "security"],
+      "category": "security",
+      "source": "./"
+    }
+  ]
+}
