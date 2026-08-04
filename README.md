@@ -63,9 +63,10 @@ a                # hand the function off to the model with a grounding prompt
 ## What it looks like
 
 The screenshots below are a real, unmodified `omp-re` session against
-`/usr/bin/ls` on Ubuntu 24.04 — not mockups. They are not distributed with
-this repo's own fixture set; regenerate them yourself with
-[`tools/shotgen`](tools/shotgen).
+`/usr/bin/ls` on Ubuntu 24.04 — not mockups. Because the subject is
+`/bin/ls` rather than a malware sample, anyone can reproduce them with
+[`tools/shotgen`](tools/shotgen) on any Linux machine with radare2
+installed.
 
 ### Function navigator
 

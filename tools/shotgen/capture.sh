@@ -68,21 +68,6 @@ cleanup() {
 trap cleanup EXIT INT TERM
 cleanup # in case a prior stale session survived a crash
 
-# An isolated PI_CODING_AGENT_DIR (config.yml/models.yml copied in, mcp.json
-# emptied) sidesteps a real, reproduced-multiple-times-during-this-pass
-# failure mode: this machine's default profile connects a large MCP catalog
-# on startup, and that startup storm can outright kill the radare2 child
-# `/re open` spawns (`omp-re: radare2 process exited`) rather than merely
-# delaying it. Auth/model config lives in config.yml, not in mcp.json, so
-# this keeps real model access while removing MCP from the picture
-# entirely — screenshots don't need any MCP tool.
-SHOT_AGENT_DIR="${SHOT_AGENT_DIR:-/tmp/ompre-shotgen-agent}"
-mkdir -p "$SHOT_AGENT_DIR"
-cp -f "$HOME/.omp/agent/config.yml" "$SHOT_AGENT_DIR/config.yml" 2>/dev/null || true
-cp -f "$HOME/.omp/agent/models.yml" "$SHOT_AGENT_DIR/models.yml" 2>/dev/null || true
-echo '{}' >"$SHOT_AGENT_DIR/mcp.json"
-export PI_CODING_AGENT_DIR="$SHOT_AGENT_DIR"
-
 # --- harness helpers, copied from test/tui-qa.sh and test/tui.sh --------
 
 pane() { tmux capture-pane -t "$SESSION" -p; }
@@ -208,7 +193,7 @@ skip_scene() {
 tmux new-session -d -s "$SESSION" -x 100 -y 30 -c "$REPO_DIR"
 tmux resize-window -t "$SESSION" -x 100 -y 30 2>/dev/null || true
 tmux send-keys -t "$SESSION" \
-	"PI_CODING_AGENT_DIR='$SHOT_AGENT_DIR' omp --approval-mode yolo" Enter
+	"omp --approval-mode yolo" Enter
 
 # --- readiness handshake --------------------------------------------------
 # See test/tui-qa.sh for the full rationale: MCP startup can keep swallowing

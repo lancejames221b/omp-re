@@ -79,10 +79,20 @@ harness robustness gaps that a tiny ELF never exercised:
   climbed further): **PASS 94 / FAIL 5 / SKIP 0** — of the 5 failures, `G6`
   and the `E3`/`E4`/`E5`/`L4` cascade are the exact classes the fixes above
   target, and `D5`/`D7` already passed clean in that same run (the `/bin/ls`
-  "no matching function" artifact this pass exists to resolve). No
-  subsequent attempt on this host reached a clean run to independently
-  confirm 99/0/0; re-run this tier on an otherwise-idle host to get a
-  trustworthy number rather than retrying again here.
+  "no matching function" artifact this pass exists to resolve). A later
+  attempt against the restored marketplace install (2026-08-04, post
+  release-remediation, against `/tmp/rzx-dogfood/wannacry.bin` with
+  `OMPRE_TEST_BINARY_ALT=/tmp/rzx-dogfood/wannacry-scenario7.bin`) again hit
+  this same environmental crash class within the first `/re open`: **PASS
+  30 / FAIL 32 / SKIP 35** (harness's own drift counter: 96 of 99 expected),
+  with `Error: omp-re: radare2 process exited` on the primary fixture open
+  cascading into "no binary" state for nearly every subsequent phase. Host
+  load climbed from `4.23` (pre-run `uptime`) to `7.64` mid/post-run, with
+  free RAM down to ~5GiB and 24 concurrent logged-in users — the same
+  contention signature documented above. The gate remains **unmet on this
+  host**; `v0.1.1` shipped without it, and this attempt does not change
+  that. Re-run this tier on an otherwise-idle host to get a trustworthy
+  number rather than retrying again here.
 - **`test/tui.sh` (smoke tier) on this same host:** two assertions
   consistently failed with `OMPRE_TEST_BINARY=/bin/ls` (needed to avoid the
   `--binary`-races-MCP-startup crash above) — "status band line 1 missing
