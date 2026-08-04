@@ -4,6 +4,20 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.1.2] - 2026-08-04
+
+### Changed
+
+- `skills/re-triage/SKILL.md` rewritten to own the initial "analyse this
+  binary" trigger instead of only covering post-open triage: broadened
+  `description:` (analyse, reverse, triage, decompile, characterise,
+  unpack), starts at `/re open <path>`, states there is no `/re triage`
+  subcommand, and states the evidence/report-withhold rule (work done
+  outside the RE tools has no evidence id, and `/re report` withholds the
+  entire report if any claim is unbacked). Fixes agents routing to a
+  different, non-omp-re RE toolchain on the first "analyse this binary"
+  request and recording zero evidence.
+
 ## [0.1.1] - 2026-08-03
 
 ### Fixed
